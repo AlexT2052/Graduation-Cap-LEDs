@@ -1,112 +1,229 @@
-//#include <Adafruit_NeoPixel.h>
-//#ifdef __AVR__
-// #include <avr/power.h> // Required for 16 MHz Adafruit Trinket
-//#endif
-
 #include <Arduino.h>
 #include <FastLED.h>
 #include <pixeltypes.h>
-
-// Which pin on the Arduino is connected to the NeoPixels?
-// On a Trinket or Gemma we suggest changing this to 1:
-//#define LED_PIN    6
-//
-//// How many NeoPixels are attached to the Arduino?
-//#define LED_COUNT 12
+#include <OneButton.h>
 
 #define POTENTIOMETER_PIN A0
+#define RGB_LEDS_PIN 6
+#define BUTTON_PIN 12
+#define ONBOARD_LED 13
 
-// Declare the pins for the Button and the LED<br>
-int buttonPin = 12;
-int LED = 13;
-
-#define LED_PIN     6
 #define COLOR_ORDER GRB
 #define CHIPSET     WS2811
-#define NUM_LEDS    56
-
+#define NUM_LEDS    57
 #define FRAMES_PER_SECOND 60
 
+enum potMode {brightnessAdjust, ledmode, framerate};
+
+potMode currentPotMode = brightnessAdjust;
 int ledMode = 0;
-int numModes = 4;
+int numModes = 6;
 int brightness = 200;
-bool gReverseDirection = false;
+int lastBrightness = 200;
 int lastButtonValue = 1;
+uint8_t paletteIndex = 0;
+uint8_t hue = 0;
+int indexer = 0;
+boolean cyclingMode = false;
+boolean color1 = true;
+
+CRGB maroon = CRGB(128, 0, 0);
+CRGB gold = CRGB(223, 188, 0);
+
+OneButton btn = OneButton(BUTTON_PIN, true, true);
+
+DEFINE_GRADIENT_PALETTE (maroonAndGold) {
+  0,   128,   0,   0,   //maroon
+  100,   128,   0,   0,   //maroon
+  255, 223,   188,   0,   //gold
+};
+
+DEFINE_GRADIENT_PALETTE (maroonAndGold2) {
+  0,   128,   0,   0,   //maroon
+  50,   128,   0,   0,   //maroon
+  127,   223,   188,   0,   //maroon
+  205,   128,   0,   0,   //maroon
+  255, 128,   0,   0,   //gold
+};
+
+CRGBPalette16 palette = maroonAndGold2;
+
+bool gReverseDirection = false;
 
 CRGB leds[NUM_LEDS];
 
 void setup() {
   Serial.begin(9600);
-  // Define pin #12 as input and activate the internal pull-up resistor
-  pinMode(buttonPin, INPUT_PULLUP);
-  // Define pin #13 as output, for the LED
-  pinMode(LED, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);   // Define pin #12 as input and activate the internal pull-up resistor
+  pinMode(ONBOARD_LED, OUTPUT);  // Define pin #13 as output, for the LED
   delay(3000); // sanity delay
-  FastLED.addLeds<CHIPSET, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
+
+  FastLED.addLeds<CHIPSET, RGB_LEDS_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
   FastLED.setBrightness( brightness );
-  FastLED.setMaxPowerInVoltsAndMilliamps( 5, 600);
+  FastLED.setMaxPowerInVoltsAndMilliamps( 5, 500);
+
+  btn.attachClick(buttonClick);
+  btn.attachLongPressStart(enterCyclingMode);
 }
 
 void loop()
 {
-   //Serial.println(analogRead(POTENTIOMETER_PIN));
-   brightness = analogRead(POTENTIOMETER_PIN)/1023.0*255;
-   brightness = brightness <= 10 ? 0 : brightness;
-   Serial.println(brightness);
-   // Read the value of the input. It can either be 1 or 0
-   int buttonValue = digitalRead(buttonPin);
-   Serial.println(buttonValue);
-   if (buttonValue == HIGH && lastButtonValue == LOW) {
-      ledMode++;
-      if (ledMode >= numModes) {
-        ledMode = 0;
-      }
-   }
-   lastButtonValue = buttonValue;
-   Serial.println(ledMode);
+  btn.tick();
 
-//   if (buttonValue == LOW){
-//      // If button pushed, turn LED on
-//      digitalWrite(LED,HIGH);
-//   } else {
-//      // Otherwise, turn the LED off
-//      digitalWrite(LED, LOW);
-//   }
-  // Add entropy to random number generator; we use a lot of it.
-  // random16_add_entropy( random());
+  uint16_t potRead = analogRead(POTENTIOMETER_PIN);
+  // switch (currentPotMode)
+  // {
+  // case brightnessAdjust:
+    uint8_t recBrightness = map(potRead, 0, 1023, 0, 255);
+    if (recBrightness <= 1) {
+      brightness = 0;
+    } else if (abs(recBrightness - lastBrightness) > 1) {
+      brightness = recBrightness;
+      lastBrightness = brightness;
+    }
+  //   break;
+  // case ledmode:
+  //   int mode = map(potRead, 0, 1023, 0, 20);
+  //   ledMode = mode;
+  //   Serial.println(mode);
+  //   break;
+  // case framerate:
+  //   break;
+  // default:
+  //   break;
+  // }
 
+  // Serial.println(ledMode);
   FastLED.setBrightness( brightness );
+
+  int buttonValue = digitalRead(BUTTON_PIN);
+  if (buttonValue == LOW){
+    // If button pushed, turn LED on
+    digitalWrite(ONBOARD_LED, HIGH);
+  } else {
+    // Otherwise, turn the LED off
+    digitalWrite(ONBOARD_LED, LOW);
+  }
+
+  if (cyclingMode) {
+    EVERY_N_SECONDS(10){
+      nextMode();
+    }
+  }
 
   switch(ledMode) {
     case 0:
-      for( int j = 0; j < NUM_LEDS; j++) {
-        leds[j] = CRGB::Red;
-      }
+      IrondaleLEDMode1();
       break;
     case 1:
-      for( int j = 0; j < NUM_LEDS; j++) {
-        leds[j] = CRGB::White;
-      }
+      rainbowWave();
       break;
     case 2:
-      Fire2012();
+      EVERY_N_MILLISECONDS(40){
+        Fire2012();
+      }
       break;
     case 3:
-      IrondaleLEDMode();
+      rainbow();
       break;
+    case 4:
+      //fadeToBlackBy(leds, NUM_LEDS, 30);
+      cornerLights();
+      break;
+    case 5:
+      commet();
     default:
       break;
   }
-
-//  for( int j = 0; j < NUM_LEDS; j++) {
-//    leds[j] = CRGB::Red;
-//  }
-  //Fire2012(); // run simulation frame
   
   FastLED.show(); // display this frame
-  FastLED.delay(1000 / FRAMES_PER_SECOND);
+  //FastLED.delay(1000 / FRAMES_PER_SECOND);
 }
 
+void buttonClick() {
+  cyclingMode = false;
+  nextMode();
+}
+
+void nextMode() {
+  ledMode = (ledMode + 1) % numModes; // Change the number after the % to the number of patterns you have
+}
+
+// void potLEDMode() {
+//   if (currentPotMode == ledmode) {
+//     currentPotMode = brightnessAdjust;
+//   } else {
+//     currentPotMode = ledmode;
+//   }
+// }
+
+void enterCyclingMode() {
+  cyclingMode = true;
+}
+
+void white() {
+  // int level = beatsin16(20, -20, 255, 0, 0);
+  // if (level < 3) {
+  //   level = 0;
+  // }
+  // for( int j = 0; j < NUM_LEDS; j++) {
+  //   leds[j] = CHSV(0, 0, level);
+  // }
+  for( int j = 0; j < NUM_LEDS; j++) {
+    leds[j] = CRGB::White;
+  }
+}
+
+void IrondaleLEDMode1() {
+  fill_palette(leds, NUM_LEDS, paletteIndex, 255 / NUM_LEDS * 5, palette, 255, LINEARBLEND);
+
+  EVERY_N_MILLISECONDS(10){
+    paletteIndex+= 3;
+  }
+}
+
+void rainbowWave() {
+  EVERY_N_MILLISECONDS (10) {
+    hue++;
+  }
+  fill_rainbow(leds, NUM_LEDS, hue, 10);
+}
+
+void rainbow() {
+
+  fill_solid(leds, NUM_LEDS, CHSV(hue, 255, 255));
+
+  EVERY_N_MILLISECONDS(20) {
+    hue++;
+  }
+}
+
+void cornerLights() {
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+  int level = beatsin16(20, -20, 255, 0, 0);
+  // Serial.println(level);
+  // if (level <= -19) {
+  //   color1 = color1 ? false : true;
+  // }
+  if (level < 5) {
+    level = 0;
+  }
+  // int cornerLeds1 [] = {14, 15, 41, 42, 43};
+  // int cornerLeds2 [] = {2, 27, 28, 29, 55, 56};
+  // for (int c : cornerLeds1) {
+  //   if (color1) {
+  //     leds[c] = CHSV(0, 255, level * 0.5);
+  //   } else {
+  //     leds[c] = CHSV(36, 255, level * 0.87);
+  //   }
+    
+  // }
+  int cornerLeds [] = {14, 15, 41, 42, 43, 2, 27, 28, 29, 55, 56};
+  for (int c : cornerLeds) {
+    leds[c] = CHSV(0, 0, level);
+  }
+  blur1d(leds, NUM_LEDS, 172);
+}
 
 // Fire2012 by Mark Kriegsman, July 2012
 // as part of "Five Elements" shown here: http://youtu.be/knWiGsmgycY
@@ -146,19 +263,6 @@ void loop()
 // Default 120, suggested range 50-200.
 #define SPARKING 120
 
-void IrondaleLEDMode() {
-  boolean isUp = true;
-  for( int j = 0; j < NUM_LEDS; j++) {
-    
-    
-    leds[j] = CRGB(j*3, 255, 255);
-  }
-
-  
-}
-
-
-
 void Fire2012()
 {
 // Array of temperature readings at each simulation cell
@@ -191,4 +295,30 @@ void Fire2012()
       }
       leds[pixelnumber] = color;
     }
+}
+
+void commet() {
+  EVERY_N_MILLISECONDS(20) {
+    const byte fadeAmt = 128;
+    const int cometSize = 3;
+    const int deltaHue  = 4;
+
+    static byte hue = HUE_RED;
+    static int iDirection = 1;
+    static int iPos = 0;
+
+    hue += deltaHue;
+
+    iPos += iDirection;
+    if (iPos == (NUM_LEDS - cometSize) || iPos == 0)
+        iPos = 0;
+    
+    for (int i = 0; i < cometSize; i++)
+        leds[iPos + i].setHue(hue);
+    
+    // Randomly fade the LEDs
+    for (int j = 0; j < NUM_LEDS; j++)
+        if (random(10) > 5)
+            leds[j] = leds[j].fadeToBlackBy(fadeAmt); 
+  }
 }
