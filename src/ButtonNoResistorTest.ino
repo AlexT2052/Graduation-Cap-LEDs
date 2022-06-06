@@ -17,15 +17,17 @@ enum potMode {brightnessAdjust, ledmode, framerate};
 
 potMode currentPotMode = brightnessAdjust;
 int ledMode = 0;
-int numModes = 6;
-int brightness = 200;
-int lastBrightness = 200;
+int numModes = 7;
 int lastButtonValue = 1;
+int indexer = 0;
+int lastLevel = 0;
+uint8_t brightness = 200;
+uint8_t lastBrightness = 200;
 uint8_t paletteIndex = 0;
 uint8_t hue = 0;
-int indexer = 0;
 boolean cyclingMode = false;
 boolean color1 = true;
+bool gReverseDirection = false;
 
 CRGB maroon = CRGB(128, 0, 0);
 CRGB gold = CRGB(223, 188, 0);
@@ -34,21 +36,13 @@ OneButton btn = OneButton(BUTTON_PIN, true, true);
 
 DEFINE_GRADIENT_PALETTE (maroonAndGold) {
   0,   128,   0,   0,   //maroon
-  100,   128,   0,   0,   //maroon
-  255, 223,   188,   0,   //gold
-};
-
-DEFINE_GRADIENT_PALETTE (maroonAndGold2) {
-  0,   128,   0,   0,   //maroon
   50,   128,   0,   0,   //maroon
   127,   223,   188,   0,   //maroon
   205,   128,   0,   0,   //maroon
   255, 128,   0,   0,   //gold
 };
 
-CRGBPalette16 palette = maroonAndGold2;
-
-bool gReverseDirection = false;
+CRGBPalette16 palette = maroonAndGold;
 
 CRGB leds[NUM_LEDS];
 
@@ -56,7 +50,6 @@ void setup() {
   Serial.begin(9600);
   pinMode(BUTTON_PIN, INPUT_PULLUP);   // Define pin #12 as input and activate the internal pull-up resistor
   pinMode(ONBOARD_LED, OUTPUT);  // Define pin #13 as output, for the LED
-  delay(3000); // sanity delay
 
   FastLED.addLeds<CHIPSET, RGB_LEDS_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
   FastLED.setBrightness( brightness );
@@ -113,24 +106,29 @@ void loop()
 
   switch(ledMode) {
     case 0:
-      IrondaleLEDMode1();
+      irondaleMaroonAndGoldCycle();
       break;
     case 1:
-      rainbowWave();
+      TwinkleMapPixels();
       break;
     case 2:
+      cornerLights();
+      break;
+    case 3:
+      rainbowWave();
+      // EVERY_N_MILLISECONDS(40){
+      //   Fire2012();
+      // }
+      break;
+    case 4:
+      rainbow();
+      break;
+    case 5:
+      //fadeToBlackBy(leds, NUM_LEDS, 30);
       EVERY_N_MILLISECONDS(40){
         Fire2012();
       }
-      break;
-    case 3:
-      rainbow();
-      break;
-    case 4:
-      //fadeToBlackBy(leds, NUM_LEDS, 30);
-      cornerLights();
-      break;
-    case 5:
+    case 6:
       commet();
     default:
       break;
@@ -143,38 +141,20 @@ void loop()
 void buttonClick() {
   cyclingMode = false;
   nextMode();
+  if (ledMode == 1) {
+    fill_solid(leds, NUM_LEDS, maroon);
+  }
 }
 
 void nextMode() {
   ledMode = (ledMode + 1) % numModes; // Change the number after the % to the number of patterns you have
 }
 
-// void potLEDMode() {
-//   if (currentPotMode == ledmode) {
-//     currentPotMode = brightnessAdjust;
-//   } else {
-//     currentPotMode = ledmode;
-//   }
-// }
-
 void enterCyclingMode() {
   cyclingMode = true;
 }
 
-void white() {
-  // int level = beatsin16(20, -20, 255, 0, 0);
-  // if (level < 3) {
-  //   level = 0;
-  // }
-  // for( int j = 0; j < NUM_LEDS; j++) {
-  //   leds[j] = CHSV(0, 0, level);
-  // }
-  for( int j = 0; j < NUM_LEDS; j++) {
-    leds[j] = CRGB::White;
-  }
-}
-
-void IrondaleLEDMode1() {
+void irondaleMaroonAndGoldCycle() {
   fill_palette(leds, NUM_LEDS, paletteIndex, 255 / NUM_LEDS * 5, palette, 255, LINEARBLEND);
 
   EVERY_N_MILLISECONDS(10){
@@ -200,29 +180,111 @@ void rainbow() {
 
 void cornerLights() {
   fill_solid(leds, NUM_LEDS, CRGB::Black);
-  int level = beatsin16(20, -20, 255, 0, 0);
-  // Serial.println(level);
-  // if (level <= -19) {
-  //   color1 = color1 ? false : true;
-  // }
-  if (level < 5) {
+  int level = beatsin16(10, -10, 255, 0, 0);
+  //Serial.println(level);
+  if (level < 3) {
     level = 0;
+    if (lastLevel >= 3) {
+      color1 = color1 != true;
+    }
   }
-  // int cornerLeds1 [] = {14, 15, 41, 42, 43};
-  // int cornerLeds2 [] = {2, 27, 28, 29, 55, 56};
-  // for (int c : cornerLeds1) {
-  //   if (color1) {
-  //     leds[c] = CHSV(0, 255, level * 0.5);
-  //   } else {
-  //     leds[c] = CHSV(36, 255, level * 0.87);
-  //   }
-    
-  // }
-  int cornerLeds [] = {14, 15, 41, 42, 43, 2, 27, 28, 29, 55, 56};
-  for (int c : cornerLeds) {
-    leds[c] = CHSV(0, 0, level);
+  lastLevel = level;
+  int cornerLeds1 [] = {13, 14, 15, 16, 40, 41, 42, 43, 44};
+  int cornerLeds2 [] = {1, 2, 26, 27, 28, 29, 30, 54, 55, 56};
+  for (int c : cornerLeds1) {
+    if (color1) {
+      leds[c] = CHSV(0, 255, level * 0.7);
+    } else {
+      leds[c] = CHSV(36, 255, level * 0.9);
+    }
   }
-  blur1d(leds, NUM_LEDS, 172);
+  //int cornerLeds [] = {14, 15, 41, 42, 43, 2, 27, 28, 29, 55, 56};
+  for (int c : cornerLeds2) {
+    if (color1) {
+      leds[c] = CHSV(36, 255, level * 0.9);
+    } else {
+      leds[c] = CHSV(0, 255, level * 0.7);
+    }
+  }
+  blur1d(leds, NUM_LEDS, 170);
+}
+
+void goldSparkle() {
+
+  EVERY_N_MILLISECONDS(20) {
+    blur1d(leds, NUM_LEDS, 20);
+  }
+  //fill_solid(leds, NUM_LEDS, maroon);
+  EVERY_N_MILLISECONDS(200) {
+    int ran = random8(0, NUM_LEDS - 1);
+    for (int i = 0; i < NUM_LEDS; i++) {
+      if (i== ran) {
+        leds[i] = gold;
+      } else {
+        leds[i] = maroon;
+      }
+    }
+  }  
+}
+
+#define BASE_COLOR maroon
+
+// Peak color to twinkle up to
+#define PEAK_COLOR gold
+
+
+// Currently set to brighten up a bit faster than it dims down, 
+// but this can be adjusted.
+
+// Amount to increment the color by each loop as it gets brighter:
+#define DELTA_COLOR_UP   CRGB(5,5,0)
+
+// Amount to decrement the color by each loop as it gets dimmer:
+#define DELTA_COLOR_DOWN CRGB(3,3,0)
+
+
+// Chance of each pixel starting to brighten up.  
+// 1 or 2 = a few brightening pixels at a time.
+// 10 = lots of pixels brightening at a time.
+#define CHANCE_OF_TWINKLE 1
+
+enum { SteadyDim, GettingBrighter, GettingDimmerAgain };
+uint8_t PixelState[NUM_LEDS];
+
+void TwinkleMapPixels()
+{
+  EVERY_N_MILLISECONDS(10) {
+    for( uint16_t i = 0; i < NUM_LEDS; i++) {
+      if( PixelState[i] == SteadyDim) {
+        // this pixels is currently: SteadyDim
+        // so we randomly consider making it start getting brighter
+        if( random8() < CHANCE_OF_TWINKLE) {
+          PixelState[i] = GettingBrighter;
+        }
+        
+      } else if( PixelState[i] == GettingBrighter ) {
+        // this pixels is currently: GettingBrighter
+        // so if it's at peak color, switch it to getting dimmer again
+        if( leds[i] >= PEAK_COLOR ) {
+          PixelState[i] = GettingDimmerAgain;
+        } else {
+          // otherwise, just keep brightening it:
+          leds[i] += DELTA_COLOR_UP;
+        }
+        
+      } else { // getting dimmer again
+        // this pixels is currently: GettingDimmerAgain
+        // so if it's back to base color, switch it to steady dim
+        if( leds[i] <= BASE_COLOR ) {
+          leds[i] = BASE_COLOR; // reset to exact base color, in case we overshot
+          PixelState[i] = SteadyDim;
+        } else {
+          // otherwise, just keep dimming it down:
+          leds[i] -= DELTA_COLOR_DOWN;
+        }
+      }
+    }
+  }
 }
 
 // Fire2012 by Mark Kriegsman, July 2012
@@ -322,3 +384,24 @@ void commet() {
             leds[j] = leds[j].fadeToBlackBy(fadeAmt); 
   }
 }
+
+// void potLEDMode() {
+//   if (currentPotMode == ledmode) {
+//     currentPotMode = brightnessAdjust;
+//   } else {
+//     currentPotMode = ledmode;
+//   }
+// }
+
+// void white() {
+//   // int level = beatsin16(20, -20, 255, 0, 0);
+//   // if (level < 3) {
+//   //   level = 0;
+//   // }
+//   // for( int j = 0; j < NUM_LEDS; j++) {
+//   //   leds[j] = CHSV(0, 0, level);
+//   // }
+//   for( int j = 0; j < NUM_LEDS; j++) {
+//     leds[j] = CRGB::White;
+//   }
+// }
